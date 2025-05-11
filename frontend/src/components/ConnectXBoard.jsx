@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useCallback, useEffect } from 'react';
+import axios from 'axios';  // Import axios
 import { FaUserCircle } from 'react-icons/fa';
 import { usePlayer } from '../context/PlayerContext'; // Import the Player Context
 
@@ -30,6 +31,8 @@ export default function ConnectXBoard() {
   );
   const [moveMade, setMoveMade] = useState(false); // Track if a move is made
   const [winner, setWinner] = useState(null); // Track the winner
+  const [gameLog, setGameLog] = useState(null); // Store the game log fetched from the API
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(0); // To track the current move index in the log
 
   // Handle when a column is clicked
   const handleColumnClick = useCallback((col) => {
@@ -93,11 +96,56 @@ export default function ConnectXBoard() {
     }
   }, [moveMade, winner, switchPlayer, checkWinner]);
 
+  // Fetch game simulation result from API
+  useEffect(() => {
+    const fetchGameResult = async () => {
+      try {
+        const response = await axios.get('http://localhost:5000/simulate_game'); // Adjust the API endpoint as needed
+        console.log(response);
+        setGameLog(response.data); // Store the game log in state
+      } catch (error) {
+        console.error('Error fetching game result:', error);
+      }
+    };
+
+    fetchGameResult();
+  }, []);
+
+  // Automatically play the game based on the game log
+  useEffect(() => {
+    const playGame = () => {
+      if (gameLog && currentMoveIndex < gameLog.length && !winner) {
+        const move = gameLog[currentMoveIndex];
+        setGrid((prevGrid) => {
+          const newGrid = prevGrid.map((row) => [...row]);
+          for (let row = ROWS - 1; row >= 0; row--) {
+            if (!newGrid[row][move.move]) {
+              newGrid[row][move.move] = PLAYER_INFO[move.player - 1].color;
+              return newGrid;
+            }
+          }
+          return prevGrid; // No change if column is full
+        });
+        setCurrentMoveIndex((prevIndex) => prevIndex + 1);
+      }
+
+      checkWinner();
+    };
+
+    // Start auto-playing after a short delay
+    const interval = setInterval(() => {
+      playGame();
+    }, 1000); // Set a delay of 1 second between moves
+
+    return () => clearInterval(interval);
+  }, [gameLog, currentMoveIndex, winner]);
+
   // Render winner message
   const renderWinnerMessage = () => {
     const winnerPlayer = PLAYER_INFO[winner];
     return (
-      <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center bg-opacity-50 bg-gray-800 text-white text-3xl font-bold">
+      // <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center bg-opacity-50 bg-gray-800 text-white text-3xl font-bold">
+      <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center text-white text-3xl font-bold">
         <div className="p-4 rounded-lg bg-blue-500/70 shadow-lg">
           <h1>{winnerPlayer.name} wins!</h1>
           <button
@@ -115,6 +163,7 @@ export default function ConnectXBoard() {
   const handleReplay = () => {
     setGrid(Array.from({ length: ROWS }, () => Array(COLS).fill(null)));
     setWinner(null);
+    setCurrentMoveIndex(0); // Reset move index for auto-play
     switchPlayer(); // Reset to starting player
   };
 
@@ -129,8 +178,7 @@ export default function ConnectXBoard() {
             <div
               key={index}
               className={`relative flex items-center justify-between rounded-2xl shadow-md px-6 py-4 w-72 backdrop-blur-md bg-white/40 border-2 transition-all duration-200
-                ${isActive ? `${player.border} ring-2 ring-offset-2 ring-white scale-[1.03]` : 'border-white/50'}
-              `}
+                ${isActive ? `${player.border} ring-2 ring-offset-2 ring-white scale-[1.03]` : 'border-white/50'}`}
             >
               <div className="flex items-center space-x-3">
                 <FaUserCircle className={`w-10 h-10 ${player.iconColor}`} />
@@ -159,8 +207,7 @@ export default function ConnectXBoard() {
                 <div
                   key={`${rowIndex}-${colIndex}`}
                   className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full border transition-all duration-100 shadow-inner 
-                    ${cell === 'red' ? 'bg-red-500' : cell === 'blue' ? 'bg-blue-500' : 'bg-white hover:bg-gray-100'}
-                  `}
+                    ${cell === 'red' ? 'bg-red-500' : cell === 'blue' ? 'bg-blue-500' : 'bg-white hover:bg-gray-100'}`}
                 />
               );
             })}
