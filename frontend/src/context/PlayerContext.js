@@ -1,6 +1,6 @@
 "use client"
 // src/context/PlayerContext.js
-import { createContext, useState, useContext } from 'react';
+import { createContext, useState, useContext, useCallback, useMemo } from 'react';
 
 // Create a context
 const PlayerContext = createContext();
@@ -25,13 +25,28 @@ const PLAYER_INFO = [
 
 export const PlayerProvider = ({ children }) => {
   const [currentPlayerIndex, setCurrentPlayerIndex] = useState(0);
+  const [playerTypes, setPlayerTypes] = useState([null, null]); // ['human', 'bot'] e.g.
+  const [isGameActive, setIsGameActive] = useState(true);
 
-  const switchPlayer = () => {
+  const switchPlayer = useCallback(() => {
     setCurrentPlayerIndex((prev) => (prev + 1) % PLAYER_INFO.length);
-  };
+  }, []);
+
+  const updatePlayerTypes = useCallback((player1Type, player2Type) => {
+    setPlayerTypes([player1Type, player2Type]);
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    currentPlayerIndex,
+    switchPlayer,
+    playerTypes,
+    updatePlayerTypes,
+    isGameActive,
+    setIsGameActive
+  }), [currentPlayerIndex, switchPlayer, playerTypes, updatePlayerTypes, isGameActive]);
 
   return (
-    <PlayerContext.Provider value={{ currentPlayerIndex, switchPlayer }}>
+    <PlayerContext.Provider value={contextValue}>
       {children}
     </PlayerContext.Provider>
   );

@@ -1,23 +1,24 @@
-'use client';
-import React, { useState, useCallback, useEffect } from 'react';
-import axios from 'axios';  // Import axios
-import { FaUserCircle } from 'react-icons/fa';
-import { usePlayer } from '../context/PlayerContext'; // Import the Player Context
+"use client";
+import { useState, useCallback, useEffect, useRef } from "react";
+import axios from "axios";
+import { FaUserCircle, FaRobot } from "react-icons/fa";
+import { usePlayer } from "../context/PlayerContext";
+import { useSearchParams } from "next/navigation";
 
 const PLAYER_INFO = [
   {
-    name: 'Player 1',
-    color: 'red',
-    iconColor: 'text-red-500',
-    chipColor: 'bg-red-500',
-    border: 'border-red-400',
+    name: "Player 1",
+    color: "red",
+    iconColor: "text-red-500",
+    chipColor: "bg-red-500",
+    border: "border-red-400",
   },
   {
-    name: 'Player 2',
-    color: 'blue',
-    iconColor: 'text-blue-500',
-    chipColor: 'bg-blue-500',
-    border: 'border-blue-400',
+    name: "Player 2",
+    color: "blue",
+    iconColor: "text-blue-500",
+    chipColor: "bg-blue-500",
+    border: "border-blue-400",
   },
 ];
 
@@ -25,132 +26,334 @@ const ROWS = 6;
 const COLS = 7;
 
 export default function ConnectXBoard() {
-  const { currentPlayerIndex, switchPlayer } = usePlayer(); // Use the context to get current player and switch function
+  const searchParams = useSearchParams();
+  const {
+    currentPlayerIndex,
+    switchPlayer,
+    playerTypes,
+    updatePlayerTypes,
+    isGameActive,
+    setIsGameActive,
+  } = usePlayer();
+
   const [grid, setGrid] = useState(
     Array.from({ length: ROWS }, () => Array(COLS).fill(null))
   );
-  const [moveMade, setMoveMade] = useState(false); // Track if a move is made
-  const [winner, setWinner] = useState(null); // Track the winner
-  const [gameLog, setGameLog] = useState(null); // Store the game log fetched from the API
-  const [currentMoveIndex, setCurrentMoveIndex] = useState(0); // To track the current move index in the log
+  const [moveMade, setMoveMade] = useState(false);
+  const [winner, setWinner] = useState(null);
+  const [gameLog, setGameLog] = useState(null);
+  const [currentMoveIndex, setCurrentMoveIndex] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
+  const [arePlayerTypesLoaded, setArePlayerTypesLoaded] = useState(false);
+  const botMoveTimeoutRef = useRef(null);
+  const simulationIntervalRef = useRef(null);
 
-  // Handle when a column is clicked
-  const handleColumnClick = useCallback((col) => {
-    if (winner) return; // Prevent moves if there's a winner
+  // Initialize player types from URL parameters
+  useEffect(() => {
+    const player1Type = searchParams.get("player1") || "human";
+    const player2Type = searchParams.get("player2") || "human";
+    updatePlayerTypes(player1Type, player2Type);
+  }, [searchParams, updatePlayerTypes]);
 
-    setGrid((prevGrid) => {
-      const newGrid = prevGrid.map((row) => [...row]);
-      for (let row = ROWS - 1; row >= 0; row--) {
-        if (!newGrid[row][col]) {
-          newGrid[row][col] = PLAYER_INFO[currentPlayerIndex].color;
-          setMoveMade(true); // Mark that a move has been made
-          return newGrid;
-        }
+  const fetchBotVsBotGame = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response = await axios.get("http://localhost:5000/simulate_game");
+      setGameLog(response.data);
+      setIsGameActive(false);
+      setCurrentMoveIndex(0);
+      setWinner(null);
+      setGrid(Array.from({ length: ROWS }, () => Array(COLS).fill(null)));
+    } catch (error) {
+      console.error("Error fetching game result:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [
+    setIsLoading,
+    setGameLog,
+    setIsGameActive,
+    setCurrentMoveIndex,
+    setWinner,
+    setGrid,
+  ]);
+
+  useEffect(() => {
+    if (
+      playerTypes &&
+      playerTypes.length === 2 &&
+      playerTypes[0] !== null &&
+      playerTypes[1] !== null
+    ) {
+      setArePlayerTypesLoaded(true);
+      if (playerTypes[0] === "bot" && playerTypes[1] === "bot") {
+        fetchBotVsBotGame();
       }
-      return prevGrid; // No change if column is full
-    });
-  }, [currentPlayerIndex, winner]);
+    } else {
+      setArePlayerTypesLoaded(false);
+    }
+  }, [playerTypes, fetchBotVsBotGame]);
 
-  // Check for win conditions
+  const flattenGrid = useCallback(() => {
+    const flattened = [];
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c] === "red") flattened.push(1);
+        else if (grid[r][c] === "blue") flattened.push(2);
+        else flattened.push(0);
+      }
+    }
+    return flattened;
+  }, [grid]);
+
+  const fetchBotMove = useCallback(
+    async (playerIndex) => {
+      try {
+        const boardState = flattenGrid();
+        const endpoint = `http://localhost:5000/get_move?player=${
+          playerIndex + 1
+        }&board=${encodeURIComponent(JSON.stringify(boardState))}`;
+        const response = await axios.get(endpoint);
+        return response.data.move;
+      } catch (error) {
+        console.error(
+          `Error fetching move for player ${playerIndex + 1}:`,
+          error
+        );
+        return null;
+      }
+    },
+    [flattenGrid]
+  );
+
+  const handleColumnClick = useCallback(
+    (col) => {
+      if (
+        winner ||
+        !isGameActive ||
+        playerTypes[currentPlayerIndex] === "bot" ||
+        gameLog
+      )
+        return;
+
+      setGrid((prevGrid) => {
+        const newGrid = prevGrid.map((row) => [...row]);
+        for (let row = ROWS - 1; row >= 0; row--) {
+          if (!newGrid[row][col]) {
+            newGrid[row][col] = PLAYER_INFO[currentPlayerIndex].color;
+            setMoveMade(true);
+            return newGrid;
+          }
+        }
+        return prevGrid;
+      });
+    },
+    [
+      currentPlayerIndex,
+      winner,
+      playerTypes,
+      isGameActive,
+      gameLog,
+      setGrid,
+      setMoveMade,
+    ]
+  );
+
   const checkWinner = useCallback(() => {
-    // Helper function to check 4 consecutive pieces
     const checkLine = (r, c, dr, dc) => {
       const color = grid[r][c];
+      if (!color) return false;
       for (let i = 1; i < 4; i++) {
         const nr = r + dr * i;
         const nc = c + dc * i;
-        if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS || grid[nr][nc] !== color) {
+        if (
+          nr < 0 ||
+          nr >= ROWS ||
+          nc < 0 ||
+          nc >= COLS ||
+          grid[nr][nc] !== color
+        )
           return false;
-        }
       }
       return true;
     };
 
-    // Check for horizontal, vertical, and diagonal wins
     for (let r = 0; r < ROWS; r++) {
       for (let c = 0; c < COLS; c++) {
-        if (grid[r][c]) {
-          // Check horizontal, vertical, and diagonal directions
+        const colorOnGrid = grid[r][c];
+        if (colorOnGrid) {
           if (
-            checkLine(r, c, 0, 1) ||  // Horizontal
-            checkLine(r, c, 1, 0) ||  // Vertical
-            checkLine(r, c, 1, 1) ||  // Diagonal (bottom-left to top-right)
-            checkLine(r, c, 1, -1)    // Diagonal (top-left to bottom-right)
+            checkLine(r, c, 0, 1) ||
+            checkLine(r, c, 1, 0) ||
+            checkLine(r, c, 1, 1) ||
+            checkLine(r, c, 1, -1)
           ) {
-            setWinner(currentPlayerIndex); // Set winner
-            return;
+            const winningPlayerIndex = PLAYER_INFO.findIndex(
+              (p) => p.color === colorOnGrid
+            );
+            if (winningPlayerIndex !== -1) {
+              setWinner(winningPlayerIndex);
+              setIsGameActive(false);
+              return true;
+            }
           }
         }
       }
     }
-  }, [grid, currentPlayerIndex]);
+    return false;
+  }, [grid, setWinner, setIsGameActive]);
 
-  // Effect hook to switch players only when a move is made
+  const checkDraw = useCallback(() => {
+    if (winner) return false;
+    return grid.every((row) => row.every((cell) => cell !== null));
+  }, [grid, winner]);
+
   useEffect(() => {
     if (moveMade) {
-      checkWinner(); // Check for a winner after every move
-      if (!winner) {
-        switchPlayer(); // Switch player after the move if no winner
-      }
-      setMoveMade(false); // Reset the move flag
-    }
-  }, [moveMade, winner, switchPlayer, checkWinner]);
+      const hasWinner = checkWinner();
+      const isDraw = !hasWinner && checkDraw();
 
-  // Fetch game simulation result from API
+      if (isDraw) {
+        setIsGameActive(false);
+      }
+
+      if (!hasWinner && !isDraw) {
+        switchPlayer();
+      }
+      setMoveMade(false);
+    }
+  }, [
+    moveMade,
+    checkWinner,
+    checkDraw,
+    switchPlayer,
+    setIsGameActive,
+    setMoveMade,
+  ]);
+
   useEffect(() => {
-    const fetchGameResult = async () => {
-      try {
-        const response = await axios.get('http://localhost:5000/simulate_game'); // Adjust the API endpoint as needed
-        console.log(response);
-        setGameLog(response.data); // Store the game log in state
-      } catch (error) {
-        console.error('Error fetching game result:', error);
+    if (
+      arePlayerTypesLoaded &&
+      isGameActive &&
+      !winner &&
+      playerTypes[currentPlayerIndex] === "bot" &&
+      !gameLog
+    ) {
+      if (botMoveTimeoutRef.current) {
+        clearTimeout(botMoveTimeoutRef.current);
+      }
+      botMoveTimeoutRef.current = setTimeout(async () => {
+        const botMoveCol = await fetchBotMove(currentPlayerIndex);
+        if (botMoveCol !== null) {
+          setGrid((prevGrid) => {
+            const newGrid = prevGrid.map((row) => [...row]);
+            for (let row = ROWS - 1; row >= 0; row--) {
+              if (!newGrid[row][botMoveCol]) {
+                newGrid[row][botMoveCol] =
+                  PLAYER_INFO[currentPlayerIndex].color;
+                break;
+              }
+            }
+            return newGrid;
+          });
+          setMoveMade(true);
+        }
+      }, 1000);
+    }
+    return () => {
+      if (botMoveTimeoutRef.current) {
+        clearTimeout(botMoveTimeoutRef.current);
       }
     };
+  }, [
+    arePlayerTypesLoaded,
+    currentPlayerIndex,
+    playerTypes,
+    isGameActive,
+    winner,
+    fetchBotMove,
+    gameLog,
+    setGrid,
+    setMoveMade,
+  ]);
 
-    fetchGameResult();
-  }, []);
-
-  // Automatically play the game based on the game log
   useEffect(() => {
-    const playGame = () => {
-      if (gameLog && currentMoveIndex < gameLog.length && !winner) {
-        const move = gameLog[currentMoveIndex];
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
+    }
+
+    if (gameLog && currentMoveIndex < gameLog.length && !winner) {
+      simulationIntervalRef.current = setInterval(() => {
+        if (!gameLog || currentMoveIndex >= gameLog.length || winner) {
+          if (simulationIntervalRef.current)
+            clearInterval(simulationIntervalRef.current);
+          return;
+        }
+
+        const moveData = gameLog[currentMoveIndex];
         setGrid((prevGrid) => {
           const newGrid = prevGrid.map((row) => [...row]);
-          for (let row = ROWS - 1; row >= 0; row--) {
-            if (!newGrid[row][move.move]) {
-              newGrid[row][move.move] = PLAYER_INFO[move.player - 1].color;
-              return newGrid;
+          if (moveData && typeof moveData.move === "number") {
+            for (let row = ROWS - 1; row >= 0; row--) {
+              if (!newGrid[row][moveData.move]) {
+                newGrid[row][moveData.move] =
+                  PLAYER_INFO[moveData.player - 1].color;
+                break;
+              }
             }
           }
-          return prevGrid; // No change if column is full
+          return newGrid;
         });
+
         setCurrentMoveIndex((prevIndex) => prevIndex + 1);
+        const gameHasEnded = checkWinner();
+        if (gameHasEnded) {
+          if (simulationIntervalRef.current)
+            clearInterval(simulationIntervalRef.current);
+        }
+      }, 1000);
+    } else if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
+    }
+
+    return () => {
+      if (simulationIntervalRef.current) {
+        clearInterval(simulationIntervalRef.current);
       }
-
-      checkWinner();
     };
+  }, [
+    gameLog,
+    currentMoveIndex,
+    winner,
+    checkWinner,
+    setGrid,
+    setCurrentMoveIndex,
+  ]);
 
-    // Start auto-playing after a short delay
-    const interval = setInterval(() => {
-      playGame();
-    }, 1000); // Set a delay of 1 second between moves
+  useEffect(() => {
+    return () => {
+      if (botMoveTimeoutRef.current) {
+        clearTimeout(botMoveTimeoutRef.current);
+      }
+    };
+  }, []);
 
-    return () => clearInterval(interval);
-  }, [gameLog, currentMoveIndex, winner]);
-
-  // Render winner message
   const renderWinnerMessage = () => {
+    if (winner === null) return null;
     const winnerPlayer = PLAYER_INFO[winner];
+    if (!winnerPlayer) return null;
+
     return (
-      // <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center bg-opacity-50 bg-gray-800 text-white text-3xl font-bold">
-      <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center text-white text-3xl font-bold">
-        <div className="p-4 rounded-lg bg-blue-500/70 shadow-lg">
-          <h1>{winnerPlayer.name} wins!</h1>
+      <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center z-10">
+        <div className="p-6 rounded-lg bg-gray-800/90 shadow-lg text-center">
+          <h1 className="text-3xl font-bold text-white mb-4">
+            {winnerPlayer.name} wins!
+          </h1>
           <button
             onClick={handleReplay}
-            className="mt-4 py-2 px-6 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600"
+            className="mt-4 py-2 px-6 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600 transition-all"
           >
             Play Again
           </button>
@@ -159,30 +362,111 @@ export default function ConnectXBoard() {
     );
   };
 
-  // Reset game to initial state
+  const renderDrawMessage = () => {
+    if (winner !== null) return null;
+    return (
+      <div className="absolute top-0 left-0 w-full h-full flex items-center justify-center z-10">
+        <div className="p-6 rounded-lg bg-gray-800/90 shadow-lg text-center">
+          <h1 className="text-3xl font-bold text-white mb-4">It's a draw!</h1>
+          <button
+            onClick={handleReplay}
+            className="mt-4 py-2 px-6 bg-green-500 text-white rounded-lg shadow-md hover:bg-green-600 transition-all"
+          >
+            Play Again
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const handleReplay = () => {
     setGrid(Array.from({ length: ROWS }, () => Array(COLS).fill(null)));
     setWinner(null);
-    setCurrentMoveIndex(0); // Reset move index for auto-play
-    switchPlayer(); // Reset to starting player
+    setCurrentMoveIndex(0);
+    setGameLog(null);
+    setIsGameActive(true);
+    if (simulationIntervalRef.current) {
+      clearInterval(simulationIntervalRef.current);
+      simulationIntervalRef.current = null;
+    }
+
+    if (playerTypes[0] === "bot" && playerTypes[1] === "bot") {
+      setGameLog(null);
+      fetchBotVsBotGame();
+    } else {
+      setGameLog(null);
+    }
   };
 
+  if (!arePlayerTypesLoaded) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-indigo-100 via-white to-rose-100">
+        <div className="text-2xl font-semibold text-gray-700">
+          Loading game settings...
+        </div>
+      </div>
+    );
+  }
+
+  if (
+    isLoading &&
+    !gameLog &&
+    !(
+      playerTypes[0] === "bot" &&
+      playerTypes[1] === "bot" &&
+      !arePlayerTypesLoaded
+    )
+  ) {
+    return (
+      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-indigo-100 via-white to-rose-100">
+        <div className="text-2xl font-semibold text-gray-700">
+          Loading game...
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-sky-100 via-white to-rose-100 px-4 py-8 relative">
-      
-      {/* Player Cards */}
+    <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-indigo-100 via-white to-rose-100 px-4 py-8 relative">
       <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-12 mb-10">
         {PLAYER_INFO.map((player, index) => {
-          const isActive = index === currentPlayerIndex;
+          let displayPlayerForActiveIndicator = currentPlayerIndex;
+          if (
+            gameLog &&
+            gameLog.length > 0 &&
+            playerTypes[0] === "bot" &&
+            playerTypes[1] === "bot"
+          ) {
+            const lastMoveProcessedIndex = Math.max(0, currentMoveIndex - 1);
+            if (gameLog[lastMoveProcessedIndex]) {
+              displayPlayerForActiveIndicator =
+                gameLog[lastMoveProcessedIndex].player - 1;
+            } else if (gameLog[0]) {
+              displayPlayerForActiveIndicator = gameLog[0].player - 1;
+            }
+          }
+          const isActive = index === displayPlayerForActiveIndicator;
+          const isBot = playerTypes[index] === "bot";
+
           return (
             <div
               key={index}
-              className={`relative flex items-center justify-between rounded-2xl shadow-md px-6 py-4 w-72 backdrop-blur-md bg-white/40 border-2 transition-all duration-200
-                ${isActive ? `${player.border} ring-2 ring-offset-2 ring-white scale-[1.03]` : 'border-white/50'}`}
+              className={`relative flex items-center justify-between rounded-2xl shadow-lg px-6 py-4 w-72 bg-white border-2 transition-all duration-200
+                ${
+                  isActive
+                    ? `${player.border} ring-2 ring-offset-2 ring-white scale-[1.03]`
+                    : "border-white/50"
+                }`}
             >
               <div className="flex items-center space-x-3">
-                <FaUserCircle className={`w-10 h-10 ${player.iconColor}`} />
-                <span className="text-lg font-medium text-gray-700">{player.name}</span>
+                {isBot ? (
+                  <FaRobot className={`w-10 h-10 ${player.iconColor}`} />
+                ) : (
+                  <FaUserCircle className={`w-10 h-10 ${player.iconColor}`} />
+                )}
+                <span className="text-lg font-medium text-gray-700">
+                  {player.name}
+                </span>
               </div>
               <div
                 className={`w-8 h-8 rounded-full shadow-md border-2 border-white ${player.chipColor}`}
@@ -193,13 +477,16 @@ export default function ConnectXBoard() {
         })}
       </div>
 
-      {/* Game Board */}
-      <div className="flex gap-2 p-4 rounded-3xl shadow-xl border-2 border-blue-300 bg-blue-200/60 backdrop-blur-sm">
+      <div className="flex gap-2 p-4 rounded-3xl shadow-xl border-2 border-blue-300 bg-blue-200 backdrop-blur-sm">
         {Array.from({ length: COLS }).map((_, colIndex) => (
           <div
             key={colIndex}
             onClick={() => handleColumnClick(colIndex)}
-            className="flex flex-col gap-2 cursor-pointer"
+            className={`flex flex-col gap-2 ${
+              isGameActive && playerTypes[currentPlayerIndex] === "human"
+                ? "cursor-pointer"
+                : "cursor-default"
+            }`}
           >
             {Array.from({ length: ROWS }).map((_, rowIndex) => {
               const cell = grid[rowIndex][colIndex];
@@ -207,7 +494,13 @@ export default function ConnectXBoard() {
                 <div
                   key={`${rowIndex}-${colIndex}`}
                   className={`w-12 h-12 sm:w-14 sm:h-14 rounded-full border transition-all duration-100 shadow-inner 
-                    ${cell === 'red' ? 'bg-red-500' : cell === 'blue' ? 'bg-blue-500' : 'bg-white hover:bg-gray-100'}`}
+                    ${
+                      cell === "red"
+                        ? "bg-red-500"
+                        : cell === "blue"
+                        ? "bg-blue-500"
+                        : "bg-white hover:bg-gray-100"
+                    }`}
                 />
               );
             })}
@@ -215,8 +508,9 @@ export default function ConnectXBoard() {
         ))}
       </div>
 
-      {/* Display Winner Message */}
       {winner !== null && renderWinnerMessage()}
+
+      {!winner && checkDraw() && renderDrawMessage()}
     </div>
   );
 }
