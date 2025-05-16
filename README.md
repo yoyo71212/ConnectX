@@ -39,20 +39,6 @@ A full-stack web application with Flask backend and Next.js frontend.
    ```
    The frontend should now be running (default: http://localhost:3000).
 
-## Project Structure
-
-```
-project-root/
-│
-├── backend/            # Flask backend
-│   ├── main.py         # Main application file
-│   └── ...             # Other backend files
-│
-└── frontend/           # Next.js frontend
-    ├── pages/          # Application pages
-    ├── public/        # Static assets
-    └── ...            # Other frontend files
-```
 
 ## Development
 
