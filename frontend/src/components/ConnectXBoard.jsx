@@ -208,29 +208,17 @@ export default function ConnectXBoard() {
     return grid.every((row) => row.every((cell) => cell !== null));
   }, [grid, winner]);
 
+  // Effect to process any move made (human or active bot)
   useEffect(() => {
     if (moveMade) {
-      const hasWinner = checkWinner();
-      const isDraw = !hasWinner && checkDraw();
-
-      if (isDraw) {
-        setIsGameActive(false);
-      }
-
-      if (!hasWinner && !isDraw) {
+      if (isGameActive && !winner) {
         switchPlayer();
       }
       setMoveMade(false);
     }
-  }, [
-    moveMade,
-    checkWinner,
-    checkDraw,
-    switchPlayer,
-    setIsGameActive,
-    setMoveMade,
-  ]);
+  }, [moveMade, switchPlayer, isGameActive, winner, setMoveMade]);
 
+  // Effect to handle active bot turns (non-simulated games)
   useEffect(() => {
     if (
       arePlayerTypesLoaded &&
@@ -277,6 +265,7 @@ export default function ConnectXBoard() {
     setMoveMade,
   ]);
 
+  // Automatically play the game based on the game log for bot vs bot games
   useEffect(() => {
     if (simulationIntervalRef.current) {
       clearInterval(simulationIntervalRef.current);
@@ -286,8 +275,10 @@ export default function ConnectXBoard() {
     if (gameLog && currentMoveIndex < gameLog.length && !winner) {
       simulationIntervalRef.current = setInterval(() => {
         if (!gameLog || currentMoveIndex >= gameLog.length || winner) {
-          if (simulationIntervalRef.current)
+          if (simulationIntervalRef.current) {
             clearInterval(simulationIntervalRef.current);
+            simulationIntervalRef.current = null;
+          }
           return;
         }
 
@@ -305,32 +296,29 @@ export default function ConnectXBoard() {
           }
           return newGrid;
         });
-
         setCurrentMoveIndex((prevIndex) => prevIndex + 1);
-        const gameHasEnded = checkWinner();
-        if (gameHasEnded) {
-          if (simulationIntervalRef.current)
-            clearInterval(simulationIntervalRef.current);
-        }
       }, 1000);
-    } else if (simulationIntervalRef.current) {
-      clearInterval(simulationIntervalRef.current);
-      simulationIntervalRef.current = null;
     }
-
     return () => {
       if (simulationIntervalRef.current) {
         clearInterval(simulationIntervalRef.current);
+        simulationIntervalRef.current = null;
       }
     };
-  }, [
-    gameLog,
-    currentMoveIndex,
-    winner,
-    checkWinner,
-    setGrid,
-    setCurrentMoveIndex,
-  ]);
+  }, [gameLog, currentMoveIndex, winner, setGrid, setCurrentMoveIndex]);
+
+  // New effect to check for winner or draw whenever the grid changes
+  useEffect(() => {
+    if (!winner) {
+      const hasWinner = checkWinner();
+      if (!hasWinner) {
+        const isDraw = checkDraw();
+        if (isDraw) {
+          setIsGameActive(false);
+        }
+      }
+    }
+  }, [grid, checkWinner, checkDraw, winner, setIsGameActive]);
 
   useEffect(() => {
     return () => {
