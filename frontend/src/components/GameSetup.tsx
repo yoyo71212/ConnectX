@@ -17,7 +17,7 @@ export default function GameSetup() {
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-indigo-100 via-white to-rose-100 px-4 py-8">
       <div className="w-full max-w-md p-8 bg-white/80 backdrop-blur-md rounded-xl shadow-lg">
-        <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">Connect 4 Game Setup</h1>
+        <h1 className="text-3xl font-bold text-center mb-8 text-gray-800">RL Connect 4</h1>
 
         <div className="space-y-6">
           <div className="space-y-4">
