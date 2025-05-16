@@ -4,6 +4,7 @@ import axios from "axios";
 import { FaUserCircle, FaRobot } from "react-icons/fa";
 import { usePlayer } from "../context/PlayerContext";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link"; // Added Link import
 
 const PLAYER_INFO = [
   {
@@ -416,6 +417,11 @@ export default function ConnectXBoard() {
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-indigo-100 via-white to-rose-100 px-4 py-8 relative">
+      <Link href="/" passHref>
+        <button className="absolute top-4 left-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg shadow-md transition-colors duration-150 z-20">
+          &larr; Back
+        </button>
+      </Link>
       <div className="flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-12 mb-10">
         {PLAYER_INFO.map((player, index) => {
           let displayPlayerForActiveIndicator = currentPlayerIndex;

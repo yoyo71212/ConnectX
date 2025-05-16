@@ -1,6 +1,5 @@
-import ConnectXBoard from '@/components/ConnectXBoard';
-import GameSetup from '@/components/GameSetup';
-import { PlayerProvider } from '@/context/PlayerContext';
+import GameSetup from '../components/GameSetup';
+import { PlayerProvider } from '../context/PlayerContext';
 
 export default function HomePage() {
   return (
