@@ -1,4 +1,3 @@
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,9 +5,9 @@ import torch.nn.functional as F
 import os
 import random
 
-# Define the same model architecture used for training
+ 
 class DQNNetwork(nn.Module):
-    def __init__(self, state_size, action_size, hidden_dim1=128, hidden_dim2=128):
+    def __init__(self, state_size, action_size, hidden_dim1=512, hidden_dim2=512):
         super(DQNNetwork, self).__init__()
         self.fc1 = nn.Linear(state_size, hidden_dim1)
         self.fc2 = nn.Linear(hidden_dim1, hidden_dim2)
@@ -20,9 +19,9 @@ class DQNNetwork(nn.Module):
         return self.fc3(x)
 
 _model = None
-_state_size = 6 * 7  # 42
-_action_size = 7     # 7 columns
-MODEL_WEIGHTS_FILENAME = "dqn_connect4_model.pth" # Use the filename defined in training
+_state_size = 6 * 7   
+_action_size = 7      
+MODEL_WEIGHTS_FILENAME = "dqn_connect4_model.pth"  
 _device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_trained_model_for_inference():
@@ -30,18 +29,19 @@ def load_trained_model_for_inference():
     if _model is None:
         _model = DQNNetwork(_state_size, _action_size).to(_device)
         
-        # Path to model weights, assuming this script (playerX.py) is in 'uploads'
-        # and the model file is in the parent directory of 'uploads'
+         
+         
         script_dir = os.path.dirname(os.path.abspath(__file__))
         weights_path = os.path.join(script_dir, '..', MODEL_WEIGHTS_FILENAME) 
         
+         
         if not os.path.exists(weights_path):
             weights_path = os.path.join(script_dir, MODEL_WEIGHTS_FILENAME)
 
         if os.path.exists(weights_path):
             try:
                 _model.load_state_dict(torch.load(weights_path, map_location=_device))
-                _model.eval() # Set to evaluation mode
+                _model.eval()  
                 print(f"DQN PyTorch Agent: Loaded model weights from {weights_path}")
             except Exception as e:
                 print(f"DQN PyTorch Agent: Error loading model weights from {weights_path}: {e}")
@@ -92,4 +92,3 @@ def my_agent(observation, configuration):
         return random.choice(valid_actions) if valid_actions else 0
 
     return best_action
-
